@@ -1,115 +1,51 @@
 import struct
 
-field_descriptions = {
-    254: "NewSubfileType",
-    256: "ImageWidth",
-    257: "ImageHeight",
-    258: "BitsPerSample",
-    259: "Compression",
-    262: "PhotometricInterpretation",
-    273: "StripOffsets",
-    274: "Orientation",
-    277: "SamplesPerPixel",
-    278: "RowsPerStrip",
-    279: "StripByteCounts",
-    282: "XResolution",
-    283: "YResolution",
-    284: "PlanarConfiguration",
-    296: "ResolutionUnit",
-    305: "Software",
-    306: "DateTime",
-    330: "SubIFDs",
-    317: "Predictor",
-    700: "XMP",
-    34665: "Exif IFD Pointer",
-    50706: "DNGVersion",
-    50707: "DNGBackwardVersion",
-    50708: "UniqueCameraModel",
-    50721: "ColorMatrix1",
-    50727: "AnalogBalance",
-    50729: "AsShotWhiteXY",
-    50730: "BaselineExposure",
-    50731: "BaselineNoise",
-    50732: "BaselineSharpness",
-    50734: "LinearResponseLimit",
-    50739: "ShadowScale",
-    50778: "CalibrationIlluminant1",
-    50781: "RawDataUniqueID",
-    50879: "ColorimetricReference",
-    50936: "ProfileName",
-    50941: "ProfileEmbedPolicy",
-    50966: "PreviewApplicationName",
-    50967: "PreviewApplicationVersion",
-    50969: "PreviewSettingsDigest",
-    50970: "PreviewColorSpace",
-    50971: "PreviewDateTime",
-    51111: "NewRawImageDigest",
-
-    # Add more tag codes as needed
-}
-field_types = {
-    1: "BYTE",
-    2: "ASCII",
-    3: "SHORT",
-    4: "LONG",
-    5: "RATIONAL",
-    6: "SBYTE",
-    7: "UNDEFINED",
-    8: "SSHORT",
-    9: "SLONG",
-    10: "SRATIONAL",
-    11: "FLOAT",
-    12: "DOUBLE",
-}
-
-type_sizes = {
-    1: 1,  # BYTE
-    2: 1,  # ASCII
-    3: 2,  # SHORT
-    4: 4,  # LONG
-    5: 8,  # RATIONAL
-    6: 1,  # SBYTE
-    7: 1,  # UNDEFINED
-    8: 2,  # SSHORT
-    9: 4,  # SLONG
-    10: 8,  # SRATIONAL
-    11: 4,  # FLOAT
-    12: 8,  # DOUBLE
-}
-
-filed_types_to_unpack = {
-    1: 'B',  # BYTE
-    2: 's',  # ASCII
-    3: 'H',  # SHORT
-    4: 'I',  # LONG
-    5: 'II',  # RATIONAL
-    6: 'b',  # SBYTE
-    7: 'B',  # UNDEFINED
-    8: 'h',  # SSHORT
-    9: 'i',  # SLONG
-    10: 'ii',  # SRATIONAL
-    11: 'f',  # FLOAT
-    12: 'd',  # DOUBLE
-}
+from src.constants import ifd_descriptions, field_types_names, type_sizes, filed_types_to_unpack
 
 
 class Tag():
-    def __init__(self, tag_code, field_type, field_count, field_value):
+    def __init__(self, tag_code, field_type, field_count, field_value, unpacked_value=None):
         self.tag_code = tag_code
         self.field_type = field_type
         self.field_count = field_count
         self.field_value = field_value
+        self.unpacked_value = unpacked_value
 
     def __str__(self):
-        return f"Tag: {self.tag_code}, Field Type: {self.field_type}, Field Count: {self.field_count}, Value: {self.field_value}"
+        return f"Tag: {self.tag_code}, Field Type: {self.field_type}, Field Count: {self.field_count}, Value: {self.field_value}, Unpacked Value: {self.unpacked_value}"
 
     def __repr__(self):
-        return f"Tag: {self.tag_code}, Field Type: {self.field_type}, Field Count: {self.field_count}, Value: {self.field_value}"
+        return f"Tag: {self.tag_code}, Field Type: {self.field_type}, Field Count: {self.field_count}, Value: {self.field_value}, Unpacked Value: {self.unpacked_value}"
 
 
 def readTag(file):
     tag_code, field_type, field_count, field_value = struct.unpack('<HHII', file.read(12))
-    return Tag(tag_code, field_type, field_count, field_value)
+    unpacked_value = None
+    if field_type in [5,10,12] or (field_count>1 and field_type in [4,9,11]) or (field_count>2 and field_type in [3,8] or (field_count>4 and field_type in [1,2,6,7])):
+        current = file.tell()
+        file.seek(field_value)
+        data_size = type_sizes[field_type] * field_count
+        print("data2")
+        # print(f"description: {desc}")
+        # print(f"field description: {fdesc}")
+        print(f"field_count: {field_count}")
+        print(f"field_type: {field_type}")
+        print(data_size)
+        unpack_type = filed_types_to_unpack[field_type]
+        print(f"unpack_type: {unpack_type}")
+        data2 = file.read(data_size)
+        print(data2)
+        try:
+            unpacked_value = struct.unpack(f'<{field_count}{unpack_type}', data2)
+        except struct.error as e:
+            print(f"Error: {e}")
+            print(len(data2))
+            unpacked_value = data2
+
+        file.seek(current)
+
+
+    return Tag(tag_code, field_type, field_count, field_value, unpacked_value)
 
 
 def read_tiff_tags(filename):
@@ -141,7 +77,7 @@ def read_tiff_tags(filename):
         # Read and print each IFD entry
         for entry_index in range(num_entries):
             tag = readTag(file)
-            name = field_descriptions[tag.tag_code]
+            name = ifd_descriptions[tag.tag_code]
             if name in tags:
                 raise Exception(f"Tag {tag.tag_code} already exists")
 
@@ -173,8 +109,8 @@ def read_tiff_tags(filename):
         print(data)
 
         value_field = struct.unpack(f'<I', data)
-        desc = field_descriptions.get(tag_code, "Unknown")
-        fdesc = field_types.get(field_type, "Unknown")
+        desc = ifd_descriptions.get(tag_code, "Unknown")
+        fdesc = field_types_names.get(field_type, "Unknown")
 
         if value_field[0] > 100:  # TODO it is a value if it can fit into the value field size which is 4 bytes otherwise it is an offset
             current = file.tell()
@@ -194,7 +130,7 @@ def read_tiff_tags(filename):
             except struct.error as e:
                 print(f"Error: {e}")
                 print(len(data2))
-                value_field = "error"
+                value_field = "error. "+data2
 
             file.seek(current)
 
@@ -202,7 +138,9 @@ def read_tiff_tags(filename):
 
 
 if __name__ == "__main__":
+    car_small = r"F:\stills\sample_arriLogC_1.4.1.dng"
     tiff_filename = r"F:\stills\2x2-example-8bit.dng"
-    tags = read_tiff_tags(tiff_filename)
+    generated = "F:\stills\minimalistic_dng_test.dng"
+    tags = read_tiff_tags(car_small)
     for name, tag in tags.items():
         print(f"{name}: {tag}")

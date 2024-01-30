@@ -1,15 +1,59 @@
 import struct
 from typing import Type
 
-from src import constants
-from src.constants import IfdField
+import constants
+from constants import IfdField
+
+import cv2
+
+from loader import loadImage
 
 
 def packIfd(ifd_class: Type[IfdField], num_values, value_offset):
     return struct.pack('<HHII', ifd_class.code, ifd_class.field_type, num_values, value_offset)
 
 
-def write_tiff(filename, width, height, data):
+def generateMatrix():
+    # sRGB to DCDMXYZ
+    m = [[0.4356235907, 0.3971433934, 0.1672800655],
+         [0.2208065115, 0.7122275776, 0.0669677600],
+         [0.0172263726, 0.1086536976, 0.8740667768]]
+
+    """3.1336  -1.6168  -0.4907
+          -0.9787   1.9161   0.0335
+           0.0721  -0.2291   1.4054"""
+
+    """from linear raw example:
+    ColorMatrix1:
+	   0.9054  -0.4504   0.0215
+	  -0.4751   1.2611   0.2388
+	  -0.0296   0.0802   0.6816
+    """
+
+    m = [[1, 0, 0],
+         [0, 1, 0],
+         [0, 0, 1]]
+
+    # m = [[0.5767309, 0.1855540, 0.1881852],
+    #      [0.2973769, 0.6273491, 0.0752741],
+    #      [0.0270343, 0.0706872, 0.9911085]]
+    #
+    # #ACEScg to ProPhoto RGB
+    # m = [[ 0.8550007004,  0.0330931791,  0.1120852557],
+    #    [ 0.0518356731,  0.9368420118,  0.0112815341],
+    #    [-0.0070844894,  0.0018182897,  1.0055405093]]
+    #
+    # #adobe wide gamut RGB to ProPhotoRGB
+    # m = [[ 0.8982790259, -0.0518720305,  0.1537721399],
+    #    [ 0.0000076458,  1.0389999049, -0.0390483317],
+    #    [-0.0000000000,  0.0620840881,  0.9381902215]]
+    mult = 100000000
+    m = [[int(x * mult) for x in y] for y in m]
+
+    return struct.pack('<iiiiiiiiiiiiiiiiii', m[0][0], mult, m[0][1], mult, m[0][2], mult, m[1][0], mult, m[1][1], mult, m[1][2], mult, m[2][0], mult, m[2][1], mult, m[2][2], mult)
+
+
+def writeDNG(filename, width, height, data):
     # TIFF Header
     tiff_header = b'II*\x00'  # Little-endian byte order, TIFF identifier and TIFF version (always 42)
 
@@ -20,24 +64,31 @@ def write_tiff(filename, width, height, data):
         for y in x:
             image += struct.pack('<HHH', y[0], y[1], y[2])
 
-    bits_per_sample_offset = image_data_offset + width * height * 3 *2
+    bits_per_sample_offset = image_data_offset + width * height * 3 * 2
     print(f"bits_per_sample_offset: {bits_per_sample_offset}")
 
     # dump bits per sample and get the offset for it
     image += struct.pack('<HHH', 16, 16, 16)
 
-    matrix_offset = bits_per_sample_offset + 3*2
-    #color matrix
-    m = b"hz\x00\x00\x10'\x00\x00\xd8\xc0\xff\xff\x10'\x00\x00\xd5\xec\xff\xff\x10'\x00\x00\xc5\xd9\xff\xff\x10'\x00\x00\xd9J\x00\x00\x10'\x00\x00O\x01\x00\x00\x10'\x00\x00\xd1\x02\x00\x00\x10'\x00\x00\r\xf7\xff\xff\x10'\x00\x00\xe66\x00\x00\x10'\x00\x00"
-    image += m
+    matrix_offset = bits_per_sample_offset + 3 * 2
+    # color matrix
+    # m = b"hz\x00\x00\x10'\x00\x00\xd8\xc0\xff\xff\x10'\x00\x00\xd5\xec\xff\xff\x10'\x00\x00\xc5\xd9\xff\xff\x10'\x00\x00\xd9J\x00\x00\x10'\x00\x00O\x01\x00\x00\x10'\x00\x00\xd1\x02\x00\x00\x10'\x00\x00\r\xf7\xff\xff\x10'\x00\x00\xe66\x00\x00\x10'\x00\x00"
+    # m = b'^#\x00\x00\x10\'\x00\x00h\xee\xff\xff\x10\'\x00\x00\xd7\x00\x00\x00\x10\'\x00\x00q\xed\xff\xff\x10\'\x00\x00C1\x00\x00\x10\'\x00\x00T\t\x00\x00\x10\'\x00\x00\xd8\xfe\xff\xff\x10\'\x00\x00"\x03\x00\x00\x10\'\x00\x00\xa0\x1a\x00\x00\x10\'\x00\x00'
 
-    print(len(m))
+    # image += m
+    # 3x3 float matrix
+    image += generateMatrix()
+
+    sample_format_offset = matrix_offset + 9 * 8
+
+    image += struct.pack('<HHH', 3, 3, 3) #float
+
+    # print(len(m))
     # Image File Directory (IFD)
-    ifd_offset = matrix_offset + len(m)
+    ifd_offset = sample_format_offset + 3 * 2
     # ifd_offset += 4
     # Offset to the IFD
     print(f"ifd_offset: {ifd_offset}")
-
 
     # NewSubfileType: Tag: 254, Field Type: 4, Field Count: 1, Value: 1
     # ImageWidth: Tag: 256, Field Type: 4, Field Count: 1, Value: 256
@@ -79,10 +130,7 @@ def write_tiff(filename, width, height, data):
     # PreviewDateTime: Tag: 50971, Field Type: 2, Field Count: 26, Value: 6680
     # NewRawImageDigest: Tag: 51111, Field Type: 1, Field Count: 16, Value: 6706
 
-
-
-
-    num_entries = 14
+    num_entries = 15
 
     ifd = struct.pack('<H', num_entries)  # Number of directory entries (including one entry for the end of the IFD)
     # field type
@@ -97,15 +145,17 @@ def write_tiff(filename, width, height, data):
     ifd += packIfd(constants.ImageHeight, 1, height)
     ifd += packIfd(constants.BitsPerSample, 3, bits_per_sample_offset)
     ifd += packIfd(constants.Compression, 1, 1)
-    ifd += packIfd(constants.PhotometricInterpretation, 1, 34892) #0x106 (PhotometricInterpretation), Short, 1 value, 34892 (linear raw) https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
+    ifd += packIfd(constants.PhotometricInterpretation, 1,
+                   34892)  # 0x106 (PhotometricInterpretation), Short, 1 value, 34892 (linear raw) https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
     ifd += packIfd(constants.StripOffsets, 1, image_data_offset)
     ifd += packIfd(constants.Orientation, 1, 1)
     ifd += packIfd(constants.SamplesPerPixel, 1, 3)
     ifd += packIfd(constants.RowsPerStrip, 1, height)
-    ifd += packIfd(constants.StripByteCounts, 1, width * height * 3 *2)
+    ifd += packIfd(constants.StripByteCounts, 1, width * height * 3 * 2)
     ifd += packIfd(constants.PlanarConfiguration, 1, 1)
-    ifd += packIfd(constants.DNGVersion, 4, 1025) #1.4.0.0
+    ifd += packIfd(constants.DNGVersion, 4, 1025)  # 1.4.0.0
     ifd += packIfd(constants.ColorMatrix1, 9, matrix_offset)
+    ifd+= packIfd(constants.SampleFormat,3,sample_format_offset)
 
     # 274
     # # Bits Per Sample
@@ -138,14 +188,29 @@ def write_tiff(filename, width, height, data):
 
 
 if __name__ == "__main__":
-    width = 2
-    height = 2
-    data = [
-        [[0, 0, 0], [0, 0, 0]],
-        [[0, 0, 0], [0, 0, 0]],
-    ]  # RGB 2x2 image
+    img = loadImage(r"F:\stills\sample_arriLogC_1.4.1.tif", "Input - Arri - Curve - V3 LogC (EI800)")
+
+    cv2.imwrite(r"F:\stills\minimalistic_dng_test.tif", img)
+
+    # width = 2
+    # height = 2
+    # data = [
+    #     [[255 * 10, 0, 0], [0, 255 * 10, 0]],
+    #     [[0, 0, 255 * 10], [0, 0, 0]],
+    # ]  # RGB 2x2 image
+    #
+    # m = np.matrix([0.4124564,  0.3575761,  0.1804375, 0.2126729,  0.7151522,  0.0721750, 0.0193339,  0.1191920,  0.9503041])
+    #
+    #
+    # xyz_pixels = np.matmul(np.array([1,0,0]), m)
+    # xyz_data = [[xyz_pixels[0], xyz_pixels[1]],
+    #             [xyz_pixels[2], xyz_pixels[0]]]
 
     tiff_filename = "f:/stills/minimalistic_dng_test.dng"
-    write_tiff(tiff_filename, width, height, data)
+
+    height, width, _ = img.shape
+    print(f"width: {width}, height: {height}")
+
+    writeDNG(tiff_filename, width, height, img)
 
     print(f"TIFF file '{tiff_filename}' created successfully.")

@@ -25,21 +25,23 @@ def readTag(file):
         current = file.tell()
         file.seek(field_value)
         data_size = type_sizes[field_type] * field_count
-        print("data2")
-        # print(f"description: {desc}")
-        # print(f"field description: {fdesc}")
-        print(f"field_count: {field_count}")
-        print(f"field_type: {field_type}")
-        print(data_size)
+        # print("data2")
+        # # print(f"description: {desc}")
+        # # print(f"field description: {fdesc}")
+        # print(f"field_count: {field_count}")
+        # print(f"field_type: {field_type}")
+        # print(data_size)
         unpack_type = filed_types_to_unpack[field_type]
-        print(f"unpack_type: {unpack_type}")
+        # print(f"unpack_type: {unpack_type}")
         data2 = file.read(data_size)
-        print(data2)
+        # print(data2)
         try:
             unpacked_value = struct.unpack(f'<{field_count}{unpack_type}', data2)
+            if len(unpacked_value)>40:
+                unpacked_value = unpacked_value[:40]
         except struct.error as e:
             print(f"Error: {e}")
-            print(len(data2))
+            # print(len(data2))
             unpacked_value = data2
 
         file.seek(current)
@@ -77,11 +79,34 @@ def read_tiff_tags(filename):
         # Read and print each IFD entry
         for entry_index in range(num_entries):
             tag = readTag(file)
-            name = ifd_descriptions[tag.tag_code]
+            try:
+                name = ifd_descriptions[tag.tag_code]
+            except KeyError:
+                name = f"Unknown: {tag.tag_code}"
             if name in tags:
                 raise Exception(f"Tag {tag.tag_code} already exists")
 
             tags[name] = tag
+
+        # if subifds are present in tags read them too
+        #TODO
+        if "SubIFDs" in tags:
+            print("SubIFDs found")
+            subifds = tags["SubIFDs"].unpacked_value
+            for i,subifd in enumerate(subifds):
+                file.seek(subifd)
+                num_entries = struct.unpack('<H', file.read(2))[0]
+                print(f"Number of SubIFD entries: {num_entries}")
+                for entry_index in range(num_entries):
+                    tag = readTag(file)
+                    try:
+                        name = ifd_descriptions[tag.tag_code]
+                    except KeyError:
+                        name = f"Unknown: {tag.tag_code}"
+                    if name+f"({i})" in tags:
+                        raise RuntimeError(f"Tag {tag.tag_code} already exists")
+
+                    tags[name+f"({i})"] = tag
 
         return tags
 
@@ -141,6 +166,9 @@ if __name__ == "__main__":
     car_small = r"F:\stills\sample_arriLogC_1.4.1.dng"
     tiff_filename = r"F:\stills\2x2-example-8bit.dng"
     generated = "F:\stills\minimalistic_dng_test.dng"
-    tags = read_tiff_tags(car_small)
+    example = r"F:\stills\dng_samples\01_jxl_linear_raw_integer.dng"
+
+    linear_float = r"F:\stills\dng_samples\02_jxl_linear_raw_float.dng"
+    tags = read_tiff_tags(linear_float)
     for name, tag in tags.items():
         print(f"{name}: {tag}")

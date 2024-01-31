@@ -1,20 +1,22 @@
 class field_types:
-    BYTE =  1
-    ASCII =  2
-    SHORT =  3
+    BYTE = 1
+    ASCII = 2
+    SHORT = 3
     LONG = 4
-    RATIONAL =5
+    RATIONAL = 5
     SBYTE = 6
-    UNDEFINED =7
+    UNDEFINED = 7
     SSHORT = 8
     SLONG = 9
-    SRATIONAL =10
+    SRATIONAL = 10
     FLOAT = 11
     DOUBLE = 12
+
 
 class IfdField:
     code = -1
     field_type = -1
+
     @property
     def name(self):
         return self.__class__.__name__
@@ -23,65 +25,97 @@ class IfdField:
 class SubIFDs(IfdField):
     code = 330
     field_type = field_types.LONG
+
+
 class SampleFormat(IfdField):
     code = 339
     field_type = field_types.SHORT
+
 
 class NewSubfileType(IfdField):
     code = 254
     field_type = field_types.LONG
 
+
 class ImageWidth(IfdField):
     code = 256
     field_type = field_types.LONG
+
 
 class ImageHeight(IfdField):
     code = 257
     field_type = field_types.LONG
 
+
 class BitsPerSample(IfdField):
     code = 258
     field_type = field_types.SHORT
+
 
 class Compression(IfdField):
     code = 259
     field_type = field_types.SHORT
 
+
 class PhotometricInterpretation(IfdField):
     code = 262
     field_type = field_types.SHORT
+
 
 class StripOffsets(IfdField):
     code = 273
     field_type = field_types.LONG
 
+
 class Orientation(IfdField):
     code = 274
     field_type = field_types.SHORT
+
 
 class SamplesPerPixel(IfdField):
     code = 277
     field_type = field_types.SHORT
 
+
 class RowsPerStrip(IfdField):
     code = 278
     field_type = field_types.LONG
+
 
 class StripByteCounts(IfdField):
     code = 279
     field_type = field_types.LONG
 
+
 class PlanarConfiguration(IfdField):
     code = 284
     field_type = field_types.SHORT
+
 
 class DNGVersion(IfdField):
     code = 50706
     field_type = field_types.BYTE
 
+
 class ColorMatrix1(IfdField):
     code = 50721
     field_type = field_types.SRATIONAL
+
+
+class AnalogBalance(IfdField):
+    code = 50727
+    field_type = field_types.RATIONAL
+
+
+class CalibrationIlluminant1(IfdField):
+    code = 50778
+    field_type = field_types.SHORT
+
+
+class CFAPlaneColor(IfdField):
+    code = 50710
+    field_type = field_types.BYTE
+
 
 ifd_descriptions = {
     254: "NewSubfileType",
@@ -132,8 +166,6 @@ ifd_descriptions = {
 }
 
 ifd_codes = dict(map(reversed, ifd_descriptions.items()))
-
-
 
 field_types_names = {
     1: "BYTE",

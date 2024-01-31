@@ -24,7 +24,6 @@ def packIfd(ifd_class: Type[IfdField], num_values, value_offset):
     return struct.pack('<HHII', ifd_class.code, ifd_class.field_type, num_values, value_offset)
 
 
-
 class DNG():
     def __init__(self, width, height):
         self._width = width
@@ -40,7 +39,7 @@ class DNG():
 
         self._num_ifds = 0
         self._offsets = dict()
-        self._last_ifd_id = -1 #to make sure they are in order as per DNG docs
+        self._last_ifd_id = -1  # to make sure they are in order as per DNG docs
 
     def _makeHeader(self):
         return b'II*\x00'  # Little-endian byte order, TIFF identifier and TIFF version (always 42)
@@ -65,6 +64,7 @@ class DNG():
         logger.info(f"Adding IFD: {ifd}")
         if ifd.code < self._last_ifd_id:
             raise Exception(f"IFD codes must be in ascending order: {ifd}")
+        self._last_ifd_id = ifd.code
         self._ifds += packIfd(ifd, num_values, value)
         self._num_ifds += 1
 
@@ -86,7 +86,7 @@ class DNG():
     def _makeIfdFooter(self):
         return struct.pack('<I', 0)
 
-    def write(self,path):
+    def write(self, path):
         with open(path, 'wb') as f:
             f.write(self._makeHeader())
             f.write(struct.pack('<I', self._getIfdOffset()))
@@ -108,14 +108,19 @@ def writeDNG(filename, width, height, data):
 
     dng.addData('matrix', flatten(DNG_MATRIX), SRational)
     dng.addData('sample_format', [3, 3, 3], Short)
-    dng.addData('white_level', [int(data.max()), int(data.max()), int(data.max())], Short)
+    dng.addData('black_level', [0,0,0], Short)
+    dng.addData('white_level', [100,100,100], Short) #a bit random value. not sure what max value I can get from aces_cc encoded footage
+    exposure = 5 #this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
+    logger.debug(f"base exposure: {exposure}")
+    dng.addData('baseline_exposure', [exposure], SRational)
 
     dng.addIfd(constants.NewSubfileType, 1, 0)
     dng.addIfd(constants.ImageWidth, 1, width)
     dng.addIfd(constants.ImageHeight, 1, height)
     dng.addIfd(constants.BitsPerSample, 3, dng._offsets['bits_per_sample'])
     dng.addIfd(constants.Compression, 1, 1)
-    dng.addIfd(constants.PhotometricInterpretation, 1,34892)  #34892 (linear raw) https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
+    # https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
+    dng.addIfd(constants.PhotometricInterpretation, 1, 34892)  # 34892 (linear raw)
     dng.addIfd(constants.StripOffsets, 1, dng._offsets['image'])
     dng.addIfd(constants.Orientation, 1, 1)
     dng.addIfd(constants.SamplesPerPixel, 1, 3)
@@ -124,26 +129,14 @@ def writeDNG(filename, width, height, data):
     dng.addIfd(constants.PlanarConfiguration, 1, 1)
     dng.addIfd(constants.SampleFormat, 3, dng._offsets['sample_format'])
     dng.addIfd(constants.DNGVersion, 4, 1025)  # 1.4.0.0 yes I'm lazy here
-    dng.addIfd(constants.ColorMatrix1, 9, dng._offsets['matrix'])
-    dng.addIfd(constants.CalibrationIlluminant1, 1, 0)
+    dng.addIfd(constants.BlackLevel, 3, dng._offsets['black_level'])
     dng.addIfd(constants.WhiteLevel, 3, dng._offsets['white_level'])
+    dng.addIfd(constants.ColorMatrix1, 9, dng._offsets['matrix'])
+    dng.addIfd(constants.BaselineExposure, 1, dng._offsets['baseline_exposure'])
+    dng.addIfd(constants.CalibrationIlluminant1, 1, 0)
 
     dng.write(filename)
 
-
-
-    # NewSubfileType: Tag: 254, Field Type: 4, Field Count: 1, Value: 1
-    # ImageWidth: Tag: 256, Field Type: 4, Field Count: 1, Value: 256
-    # ImageHeight: Tag: 257, Field Type: 4, Field Count: 1, Value: 128
-    # BitsPerSample: Tag: 258, Field Type: 3, Field Count: 3, Value: 482
-    # Compression: Tag: 259, Field Type: 3, Field Count: 1, Value: 1
-    # PhotometricInterpretation: Tag: 262, Field Type: 3, Field Count: 1, Value: 2
-    # StripOffsets: Tag: 273, Field Type: 4, Field Count: 1, Value: 138302
-    # Orientation: Tag: 274, Field Type: 3, Field Count: 1, Value: 1
-    # SamplesPerPixel: Tag: 277, Field Type: 3, Field Count: 1, Value: 3
-    # RowsPerStrip: Tag: 278, Field Type: 4, Field Count: 1, Value: 128
-    # StripByteCounts: Tag: 279, Field Type: 4, Field Count: 1, Value: 98304
-    # PlanarConfiguration: Tag: 284, Field Type: 3, Field Count: 1, Value: 1
     # Software: Tag: 305, Field Type: 2, Field Count: 49, Value: 488
     # DateTime: Tag: 306, Field Type: 2, Field Count: 20, Value: 538
     # SubIFDs: Tag: 330, Field Type: 4, Field Count: 1, Value: 6760
@@ -180,23 +173,17 @@ def writeDNG(filename, width, height, data):
     # WhiteLevel: 32768 32768 32768
 
 
-
-
 if __name__ == "__main__":
-    # img = loadImage(r"F:\stills\sample_arriLogC_1.4.1.tif", "Input - Arri - Curve - V3 LogC (EI800)")
-    # img = loadImage(r"F:\stills\lego_car\sRGB_linear.tif", "Utility - Linear - sRGB")  # "Utility - Linear - sRGB"
 
-    # img = loadImage(r"F:\stills\lego_car\arriLogC.tif", "Input - Arri - Curve - V3 LogC (EI800)")  # "Utility - Linear - sRGB"
 
-    name = "aces_cc_5k_panasonic_overexposed"
-    # name = "ACEScc"
-    img = loadImage(f"F:/stills/lego_car/{name}.tif", "ACES - ACEScc")  # "Utility - Linear - sRGB"
+    for name in ["aces_cc_5k_panasonic_underexposed_2"]:
 
-    dng_filename = "f:/stills/lego_car/" + name + ".dng"
+        img = loadImage(f"F:/stills/lego_car/{name}.tif", "ACES - ACEScc")
 
-    height, width, _ = img.shape
-    print(f"width: {width}, height: {height}")
+        dng_filename = "f:/stills/lego_car/" + name + ".dng"
 
-    writeDNG(dng_filename, width, height, img)
+        height, width, _ = img.shape
 
-    print(f"TIFF file '{dng_filename}' created successfully.")
+        writeDNG(dng_filename, width, height, img)
+
+        logger.info(f"DNG file '{dng_filename}' created successfully.")

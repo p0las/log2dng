@@ -106,15 +106,19 @@ class CFAPlaneColor(IfdField):
     field_type = Byte.dng_code
 
 
-class BaselineExposure(IfdField):
-    code = 50731
-    field_type = SRational.dng_code
+class BlackLevel(IfdField):
+    code = 50714
+    field_type = Short.dng_code
 
 
 class WhiteLevel(IfdField):
     code = 50717
     field_type = Short.dng_code
 
+
+class BaselineExposure(IfdField):
+    code = 50730
+    field_type = SRational.dng_code
 
 ifd_descriptions = {
     254: "NewSubfileType",

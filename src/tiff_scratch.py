@@ -1,4 +1,5 @@
 import struct
+import time
 from typing import Type
 
 import numpy as np
@@ -8,7 +9,7 @@ from constants import IfdField
 
 import cv2
 
-from loader import loadImage
+from loader import loadImage, DNG_MATRIX
 
 
 def packIfd(ifd_class: Type[IfdField], num_values, value_offset):
@@ -74,15 +75,17 @@ def generateMatrix():
     # #to CIE XYZ
     # m = [[0.412453,0.212671,0.019334],[0.357580,0.715160,0.119193],[0.180423,0.072169,0.950227]]
 
-    #DCDM XYZ to sRGB https://www.colour-science.org:8010/apps/rgb_colourspace_transformation_matrix?input-colourspace=DCDM+XYZ&output-colourspace=sRGB&chromatic-adaptation-transform=CAT02&formatter=repr&decimals=10
-    m = [[ 3.1748210722, -1.6974555545, -0.4775222350],
-       [-0.9899325492,  1.9499869504,  0.0400447478],
-       [ 0.0604790950, -0.2089180222,  1.1485133649]]
+    # DCDM XYZ to sRGB https://www.colour-science.org:8010/apps/rgb_colourspace_transformation_matrix?input-colourspace=DCDM+XYZ&output-colourspace=sRGB&chromatic-adaptation-transform=CAT02&formatter=repr&decimals=10
+    # m = [[ 3.1748210722, -1.6974555545, -0.4775222350],
+    #    [-0.9899325492,  1.9499869504,  0.0400447478],
+    #    [ 0.0604790950, -0.2089180222,  1.1485133649]]
 
-    #DCDM XYZ to ALEXA Wide Gamut 4
+    # DCDM XYZ to ALEXA Wide Gamut 4
     # m = [[ 1.4652841412, -0.3164934342, -0.1487907070],
     #    [-0.5139051082,  1.4065965188,  0.1073085894],
     #    [ 0.0007037509,  0.0009869408,  0.9983093083]]
+
+    m = DNG_MATRIX
 
     mult = 100000000
     m = [[int(x * mult) for x in y] for y in m]
@@ -94,16 +97,29 @@ def generateMatrix():
     return struct.pack('<iiiiiiiiiiiiiiiiii', m[0][0], mult, m[0][1], mult, m[0][2], mult, m[1][0], mult, m[1][1], mult, m[1][2], mult, m[2][0], mult, m[2][1], mult, m[2][2], mult)
 
 
+def generateBaseLineExposure(exposure):
+    return struct.pack('<ii', int(exposure * 100000000), 100000000)
+
+
 def writeDNG(filename, width, height, data):
     # TIFF Header
     tiff_header = b'II*\x00'  # Little-endian byte order, TIFF identifier and TIFF version (always 42)
 
     image_data_offset = 8
     # dump image data here and get the offset for ifds
-    image = b''
-    for x in data:
-        for y in x:
-            image += struct.pack('<eee', y[0], y[1], y[2])  # 16bit half floats BGR for some reason
+    print("saving binary image data")
+    t = time.time()
+    # image = b''
+    # for x in data:
+    #     for y in x:
+    #         image += struct.pack('<eee', y[0], y[1], y[2])  # 16bit half floats
+
+    print(f"max_value_in_data: {data.max()}")
+    image = np.array(data.flatten(), dtype='<e').tobytes()
+    print("elapsed: ", time.time() - t)
+
+    # np.array(df.to_numpy().flatten(), dtype='>f').tobytes()
+    # struct.pack('>%sf' % len(floatlist), *floatlist)
 
     bits_per_sample_offset = image_data_offset + width * height * 3 * 2
     print(f"bits_per_sample_offset: {bits_per_sample_offset}")
@@ -121,12 +137,15 @@ def writeDNG(filename, width, height, data):
 
     image += struct.pack('<HHH', 3, 3, 3)  # float
 
-    analog_balance_offset = sample_format_offset + 3 * 2
+    white_level_offset = sample_format_offset + 3 * 2
 
-    image += b'@B\x0f\x00@B\x0f\x00@B\x0f\x00@B\x0f\x00@B\x0f\x00@B\x0f\x00'
+
+    max_pixel_value = int(data.max())
+    image += struct.pack('<HHH', max_pixel_value, max_pixel_value, max_pixel_value)
+
     # print(len(m))
     # Image File Directory (IFD)
-    ifd_offset = analog_balance_offset + 6 * 2
+    ifd_offset = white_level_offset + 3 * 2
     # ifd_offset += 4
     # Offset to the IFD
     print(f"ifd_offset: {ifd_offset}")
@@ -169,7 +188,14 @@ def writeDNG(filename, width, height, data):
     # PreviewSettingsDigest: Tag: 50969, Field Type: 1, Field Count: 16, Value: 6664
     # PreviewColorSpace: Tag: 50970, Field Type: 4, Field Count: 1, Value: 2
     # PreviewDateTime: Tag: 50971, Field Type: 2, Field Count: 26, Value: 6680
-    # NewRawImageDigest: Tag: 51111, Field Type: 1, Field Count: 16, Value: 6706
+    # NewRawImageDigest: Tag: 51111, Field Type: 1, Field Count: 16, Value: 6706c
+
+    # BaselineExposure: +3.32
+    # BaselineNoise: 0.60
+    # BaselineSharpness: 1.33
+    # LinearResponseLimit: 1.00
+    # BlackLevel: 0.00 0.00 0.00
+    # WhiteLevel: 32768 32768 32768
 
     num_entries = 17
 
@@ -194,11 +220,14 @@ def writeDNG(filename, width, height, data):
     ifd += packIfd(constants.RowsPerStrip, 1, height)
     ifd += packIfd(constants.StripByteCounts, 1, width * height * 3 * 2)
     ifd += packIfd(constants.PlanarConfiguration, 1, 1)
+    ifd += packIfd(constants.SampleFormat, 3, sample_format_offset)
     ifd += packIfd(constants.DNGVersion, 4, 1025)  # 1.4.0.0
     ifd += packIfd(constants.ColorMatrix1, 9, matrix_offset)
-    ifd += packIfd(constants.SampleFormat, 3, sample_format_offset)
-    ifd += packIfd(constants.AnalogBalance, 3, analog_balance_offset)  # no differnce to the weird colours
+
+    # ifd += packIfd(constants.AnalogBalance, 3, analog_balance_offset)  # no differnce to the weird colours
+
     ifd += packIfd(constants.CalibrationIlluminant1, 1, 0)  # no difference to the weird colours
+    ifd += packIfd(constants.WhiteLevel, 3, white_level_offset) #when set to max pixel value
 
     # 274
     # # Bits Per Sample
@@ -236,32 +265,15 @@ if __name__ == "__main__":
 
     # img = loadImage(r"F:\stills\lego_car\arriLogC.tif", "Input - Arri - Curve - V3 LogC (EI800)")  # "Utility - Linear - sRGB"
 
-    img = loadImage(r"F:\stills\lego_car\ACEScc.tif", "ACES - ACEScc")  # "Utility - Linear - sRGB"
+    name = "aces_cc_5k_panasonic_overexposed"
+    # name = "ACEScc"
+    img = loadImage(f"F:/stills/lego_car/{name}.tif", "ACES - ACEScc")  # "Utility - Linear - sRGB"
 
-
-    cv2.imwrite(r"F:\stills\lego_car\dng_test_fromArri.tif", (img * 255).astype(np.uint8))
-    print(img.shape)
-    print(img[0][0])
-
-    # width = 2
-    # height = 2
-    # data = [
-    #     [[255 * 10, 0, 0], [0, 255 * 10, 0]],
-    #     [[0, 0, 255 * 10], [0, 0, 0]],
-    # ]  # RGB 2x2 image
-    #
-    # m = np.matrix([0.4124564,  0.3575761,  0.1804375, 0.2126729,  0.7151522,  0.0721750, 0.0193339,  0.1191920,  0.9503041])
-    #
-    #
-    # xyz_pixels = np.matmul(np.array([1,0,0]), m)
-    # xyz_data = [[xyz_pixels[0], xyz_pixels[1]],
-    #             [xyz_pixels[2], xyz_pixels[0]]]
-
-    tiff_filename = "f:/stills/lego_car/dng_test_fromArri.dng"
+    dng_filename = "f:/stills/lego_car/" + name + ".dng"
 
     height, width, _ = img.shape
     print(f"width: {width}, height: {height}")
 
-    writeDNG(tiff_filename, width, height, img)
+    writeDNG(dng_filename, width, height, img)
 
-    print(f"TIFF file '{tiff_filename}' created successfully.")
+    print(f"TIFF file '{dng_filename}' created successfully.")

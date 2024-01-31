@@ -1,120 +1,119 @@
-class field_types:
-    BYTE = 1
-    ASCII = 2
-    SHORT = 3
-    LONG = 4
-    RATIONAL = 5
-    SBYTE = 6
-    UNDEFINED = 7
-    SSHORT = 8
-    SLONG = 9
-    SRATIONAL = 10
-    FLOAT = 11
-    DOUBLE = 12
+from field_types import Long, Short, Byte, SRational, Rational
 
 
-class IfdField:
+class IfdMeta(type):
+    def __repr__(cls):
+        return f"{cls.__name__} - code: {cls.code}, type: {cls.field_type}"
+
+
+class IfdField(metaclass=IfdMeta):
     code = -1
     field_type = -1
-
-    @property
-    def name(self):
-        return self.__class__.__name__
 
 
 class SubIFDs(IfdField):
     code = 330
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class SampleFormat(IfdField):
     code = 339
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class NewSubfileType(IfdField):
     code = 254
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class ImageWidth(IfdField):
     code = 256
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class ImageHeight(IfdField):
     code = 257
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class BitsPerSample(IfdField):
     code = 258
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class Compression(IfdField):
     code = 259
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class PhotometricInterpretation(IfdField):
     code = 262
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class StripOffsets(IfdField):
     code = 273
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class Orientation(IfdField):
     code = 274
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class SamplesPerPixel(IfdField):
     code = 277
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class RowsPerStrip(IfdField):
     code = 278
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class StripByteCounts(IfdField):
     code = 279
-    field_type = field_types.LONG
+    field_type = Long.dng_code
 
 
 class PlanarConfiguration(IfdField):
     code = 284
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class DNGVersion(IfdField):
     code = 50706
-    field_type = field_types.BYTE
+    field_type = Byte.dng_code
 
 
 class ColorMatrix1(IfdField):
     code = 50721
-    field_type = field_types.SRATIONAL
+    field_type = SRational.dng_code
 
 
 class AnalogBalance(IfdField):
     code = 50727
-    field_type = field_types.RATIONAL
+    field_type = Rational.dng_code
 
 
 class CalibrationIlluminant1(IfdField):
     code = 50778
-    field_type = field_types.SHORT
+    field_type = Short.dng_code
 
 
 class CFAPlaneColor(IfdField):
     code = 50710
-    field_type = field_types.BYTE
+    field_type = Byte.dng_code
+
+
+class BaselineExposure(IfdField):
+    code = 50731
+    field_type = SRational.dng_code
+
+
+class WhiteLevel(IfdField):
+    code = 50717
+    field_type = Short.dng_code
 
 
 ifd_descriptions = {

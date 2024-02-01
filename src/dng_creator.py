@@ -1,6 +1,5 @@
 import logging
 import struct
-import time
 from logging import getLogger
 from typing import Type, List
 
@@ -15,13 +14,14 @@ logger = getLogger('dng_creator')
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+IDF_DATA_BITS_COUNT = 4
 
 def flatten(matrix):
     return [item for row in matrix for item in row]
 
 
 def packIfd(ifd_class: Type[IfdField], num_values, value_offset):
-    return struct.pack('<HHII', ifd_class.code, ifd_class.field_type, num_values, value_offset)
+    return struct.pack('<HHII', ifd_class.code, ifd_class.field_type.dng_code, num_values, value_offset)
 
 
 class DNG():
@@ -44,6 +44,17 @@ class DNG():
     def _makeHeader(self):
         return b'II*\x00'  # Little-endian byte order, TIFF identifier and TIFF version (always 42)
 
+    def add(self, ifd: Type[IfdField], num_values, data):
+
+        if self._fitsToIfd(ifd.field_type, num_values):
+            self.addIfd(ifd, num_values, data)
+        else:
+            #TODO: generate unique name here or id in case we have the same tag more then once
+            name = str(ifd)
+            offset = self.addData(name, data, ifd.field_type)
+            self.addIfd(ifd, num_values, offset)
+
+
     def addData(self, name, data: List, data_type: Type[FieldType]):
         logger.info(f"Adding data {name} - size: {len(data)}, {data_type}")
         self._offsets[name] = self._header_size + len(self._binary_data)
@@ -59,6 +70,8 @@ class DNG():
             # self._binary_data += np.array(data, dtype=f'<{data_type.short_code}').tobytes()
 
             self._binary_data += struct.pack(f'<{len(data)}{data_type.short_code}', *data)
+
+        return self._offsets[name]
 
     def addIfd(self, ifd: Type[IfdField], num_values: int, value):
         logger.info(f"Adding IFD: {ifd}")
@@ -94,6 +107,17 @@ class DNG():
             f.write(self._makeIfdHeader())
             f.write(self._ifds)
             f.write(self._makeIfdFooter())
+
+    def _fitsToIfd(self, field_type: Type[FieldType], field_count:int):
+        """check if the provided data can fit into ifd"""
+        #we have 4 bytes to fit the data into
+
+
+        if field_type.size*field_count<= IDF_DATA_BITS_COUNT:
+            return True
+        return False
+
+
 
 
 def generateBaseLineExposure(exposure):

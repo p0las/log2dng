@@ -13,7 +13,7 @@ from loader import loadImage, DNG_MATRIX
 
 
 def packIfd(ifd_class: Type[IfdField], num_values, value_offset):
-    return struct.pack('<HHII', ifd_class.code, ifd_class.field_type, num_values, value_offset)
+    return struct.pack('<HHII', ifd_class.code, ifd_class.field_type.dng_code, num_values, value_offset)
 
 
 def generateMatrix():

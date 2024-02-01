@@ -56,6 +56,9 @@ class DNG():
 
 
     def addData(self, name, data: List, data_type: Type[FieldType]):
+        if not isinstance(data,list):
+            data = [data]
+
         logger.info(f"Adding data {name} - size: {len(data)}, {data_type}")
         self._offsets[name] = self._header_size + len(self._binary_data)
 
@@ -76,6 +79,7 @@ class DNG():
     def addIfd(self, ifd: Type[IfdField], num_values: int, value):
         logger.info(f"Adding IFD: {ifd}")
         if ifd.code < self._last_ifd_id:
+            #TODO: handle it internally by keeping a dict of ifds instead one binary chunk
             raise Exception(f"IFD codes must be in ascending order: {ifd}")
         self._last_ifd_id = ifd.code
         self._ifds += packIfd(ifd, num_values, value)
@@ -89,6 +93,8 @@ class DNG():
         self._offsets['image'] = self._header_size + len(self._binary_data)
 
         self._binary_data += np.array(data.flatten(), dtype=f'<{self.image_data_type.short_code}').tobytes()
+
+        return self._offsets['image']
 
     def _getIfdOffset(self):
         return self._header_size + len(self._binary_data)
@@ -127,37 +133,31 @@ def generateBaseLineExposure(exposure):
 def writeDNG(filename, width, height, data):
     dng = DNG(width, height)
 
-    dng.addImageData(data)
-    dng.addData('bits_per_sample', [16, 16, 16], Short)
-
-    dng.addData('matrix', flatten(DNG_MATRIX), SRational)
-    dng.addData('sample_format', [3, 3, 3], Short)
-    dng.addData('black_level', [0,0,0], Short)
-    dng.addData('white_level', [100,100,100], Short) #a bit random value. not sure what max value I can get from aces_cc encoded footage
-    exposure = 5 #this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
-    logger.debug(f"base exposure: {exposure}")
-    dng.addData('baseline_exposure', [exposure], SRational)
-
-    dng.addIfd(constants.NewSubfileType, 1, 0)
-    dng.addIfd(constants.ImageWidth, 1, width)
-    dng.addIfd(constants.ImageHeight, 1, height)
-    dng.addIfd(constants.BitsPerSample, 3, dng._offsets['bits_per_sample'])
-    dng.addIfd(constants.Compression, 1, 1)
+    dng.add(constants.NewSubfileType, 1, 0)
+    dng.add(constants.ImageWidth, 1, width)
+    dng.add(constants.ImageHeight, 1, height)
+    dng.add(constants.BitsPerSample, 3, [16, 16, 16])
+    dng.add(constants.Compression, 1, 1)
     # https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
-    dng.addIfd(constants.PhotometricInterpretation, 1, 34892)  # 34892 (linear raw)
-    dng.addIfd(constants.StripOffsets, 1, dng._offsets['image'])
-    dng.addIfd(constants.Orientation, 1, 1)
-    dng.addIfd(constants.SamplesPerPixel, 1, 3)
-    dng.addIfd(constants.RowsPerStrip, 1, height)
-    dng.addIfd(constants.StripByteCounts, 1, width * height * 3 * dng.image_data_type.size)
-    dng.addIfd(constants.PlanarConfiguration, 1, 1)
-    dng.addIfd(constants.SampleFormat, 3, dng._offsets['sample_format'])
-    dng.addIfd(constants.DNGVersion, 4, 1025)  # 1.4.0.0 yes I'm lazy here
-    dng.addIfd(constants.BlackLevel, 3, dng._offsets['black_level'])
-    dng.addIfd(constants.WhiteLevel, 3, dng._offsets['white_level'])
-    dng.addIfd(constants.ColorMatrix1, 9, dng._offsets['matrix'])
-    dng.addIfd(constants.BaselineExposure, 1, dng._offsets['baseline_exposure'])
-    dng.addIfd(constants.CalibrationIlluminant1, 1, 0)
+    dng.add(constants.PhotometricInterpretation, 1, 34892)  # 34892 (linear raw)
+
+    #TODO: combine those two into one
+    offset = dng.addImageData(data)
+    dng.addIfd(constants.StripOffsets, 1, offset)
+
+    dng.add(constants.Orientation, 1, 1)
+    dng.add(constants.SamplesPerPixel, 1, 3)
+    dng.add(constants.RowsPerStrip, 1, height)
+    dng.add(constants.StripByteCounts, 1, width * height * 3 * dng.image_data_type.size)
+    dng.add(constants.PlanarConfiguration, 1, 1)
+    dng.add(constants.SampleFormat, 3, [3, 3, 3])
+    dng.add(constants.DNGVersion, 4, 1025)  # 1.4.0.0 yes I'm lazy here
+    dng.add(constants.BlackLevel, 3, [0,0,0])
+    dng.add(constants.WhiteLevel, 3, [100,100,100]) # a bit random value. not sure what max value I can get from aces_cc encoded footage
+    dng.add(constants.ColorMatrix1, 9, flatten(DNG_MATRIX))
+    dng.add(constants.BaselineExposure, 1, 5)#this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
+
+    dng.add(constants.CalibrationIlluminant1, 1, 0)
 
     dng.write(filename)
 

@@ -5,7 +5,8 @@ from typing import Type
 import numpy as np
 
 import constants
-from constants import IfdField
+import ifd_types
+from ifd_types import IfdField
 
 import cv2
 
@@ -207,27 +208,27 @@ def writeDNG(filename, width, height, data):
 
     # ifd += struct.pack('<HHII', constants.NewSubfileType.code, constants.NewSubfileType.field_type, 1, 1)  # NewSubfileType 1: Reduced-resolution image (often used for thumbnails or previews).
 
-    ifd += packIfd(constants.NewSubfileType, 1, 0)
-    ifd += packIfd(constants.ImageWidth, 1, width)
-    ifd += packIfd(constants.ImageHeight, 1, height)
-    ifd += packIfd(constants.BitsPerSample, 3, bits_per_sample_offset)
-    ifd += packIfd(constants.Compression, 1, 1)
-    ifd += packIfd(constants.PhotometricInterpretation, 1,
+    ifd += packIfd(ifd_types.NewSubfileType, 1, 0)
+    ifd += packIfd(ifd_types.ImageWidth, 1, width)
+    ifd += packIfd(ifd_types.ImageHeight, 1, height)
+    ifd += packIfd(ifd_types.BitsPerSample, 3, bits_per_sample_offset)
+    ifd += packIfd(ifd_types.Compression, 1, 1)
+    ifd += packIfd(ifd_types.PhotometricInterpretation, 1,
                    34892)  # 0x106 (PhotometricInterpretation), Short, 1 value, 34892 (linear raw) https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
-    ifd += packIfd(constants.StripOffsets, 1, image_data_offset)
-    ifd += packIfd(constants.Orientation, 1, 1)
-    ifd += packIfd(constants.SamplesPerPixel, 1, 3)
-    ifd += packIfd(constants.RowsPerStrip, 1, height)
-    ifd += packIfd(constants.StripByteCounts, 1, width * height * 3 * 2)
-    ifd += packIfd(constants.PlanarConfiguration, 1, 1)
-    ifd += packIfd(constants.SampleFormat, 3, sample_format_offset)
-    ifd += packIfd(constants.DNGVersion, 4, 1025)  # 1.4.0.0
-    ifd += packIfd(constants.ColorMatrix1, 9, matrix_offset)
+    ifd += packIfd(ifd_types.StripOffsets, 1, image_data_offset)
+    ifd += packIfd(ifd_types.Orientation, 1, 1)
+    ifd += packIfd(ifd_types.SamplesPerPixel, 1, 3)
+    ifd += packIfd(ifd_types.RowsPerStrip, 1, height)
+    ifd += packIfd(ifd_types.StripByteCounts, 1, width * height * 3 * 2)
+    ifd += packIfd(ifd_types.PlanarConfiguration, 1, 1)
+    ifd += packIfd(ifd_types.SampleFormat, 3, sample_format_offset)
+    ifd += packIfd(ifd_types.DNGVersion, 4, 1025)  # 1.4.0.0
+    ifd += packIfd(ifd_types.ColorMatrix1, 9, matrix_offset)
 
     # ifd += packIfd(constants.AnalogBalance, 3, analog_balance_offset)  # no differnce to the weird colours
 
-    ifd += packIfd(constants.CalibrationIlluminant1, 1, 0)  # no difference to the weird colours
-    ifd += packIfd(constants.WhiteLevel, 3, white_level_offset) #when set to max pixel value
+    ifd += packIfd(ifd_types.CalibrationIlluminant1, 1, 0)  # no difference to the weird colours
+    ifd += packIfd(ifd_types.WhiteLevel, 3, white_level_offset) #when set to max pixel value
 
     # 274
     # # Bits Per Sample

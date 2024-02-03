@@ -1,6 +1,6 @@
 from typing import Type
 
-from field_types import FieldType, Long, Short, Byte, SRational, Rational
+from field_types import FieldType, Long, Short, Byte, SRational, Rational, Ascii
 
 
 class IfdMeta(type):
@@ -125,3 +125,8 @@ class WhiteLevel(IfdField):
 class BaselineExposure(IfdField):
     code = 50730
     field_type = SRational
+
+
+class Software(IfdField):
+    code = 305
+    field_type = Ascii

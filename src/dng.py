@@ -5,12 +5,13 @@ from typing import Type, List
 import numpy as np
 
 import ifd_types
-from field_types import HalfFloat, FieldType, SRational
+from field_types import HalfFloat, FieldType, SRational, Ascii
 from loader import DNG_MATRIX
 
 logger = getLogger('dng_creator')
 
 IDF_DATA_BITS_COUNT = 4
+LINEAR_RAW = 34892
 
 
 def flatten(matrix):
@@ -46,14 +47,15 @@ class DNG():
             self.addIfd(ifd, num_values, data)
         else:
             # if the data doesn't fit into ids we add it to the binary data and add point the ifd to it
-            offset = self.addData(str(ifd), data, ifd.field_type)
+            offset = self.addData(data, ifd.field_type)
             self.addIfd(ifd, num_values, offset)
 
-    def addData(self, name, data: List, data_type: Type[FieldType]):
+    def addData(self, data: List, data_type: Type[FieldType]):
+
         if not isinstance(data, list):
             data = [data]
 
-        logger.info(f"Adding data {name} - size: {len(data)}, {data_type}")
+        logger.debug(f"Adding data - size: {len(data)}, {data_type}")
         offset = self._header_size + len(self._binary_data)
 
         if data_type == SRational:
@@ -62,10 +64,14 @@ class DNG():
             denominators = [denominator] * len(data)
             data = flatten(zip(numerators, denominators))
             self._binary_data += struct.pack(f'<{len(data)}i', *data)
+        elif data_type == Ascii:
+            #TODO: ascii data type not implemented yet
+            raise NotImplementedError("Ascii data type not implemented yet as dng_validate complains about not a null terminated string. I need to figure out how to do that.")
+
+            data = data[0]
+            #this should work as the string is null terminated (longer than the actual string)
+            self._binary_data += struct.pack(f'<{len(data) + 1}{data_type.short_code}', data.encode('utf-8'))
         else:
-
-            # self._binary_data += np.array(data, dtype=f'<{data_type.short_code}').tobytes()
-
             self._binary_data += struct.pack(f'<{len(data)}{data_type.short_code}', *data)
 
         return offset
@@ -123,16 +129,14 @@ class DNG():
 def writeDNG(filename, width, height, data):
     dng = DNG(width, height)
 
+    dng.addImageData(data)
+
     dng.add(ifd_types.NewSubfileType, 1, 0)
     dng.add(ifd_types.ImageWidth, 1, width)
     dng.add(ifd_types.ImageHeight, 1, height)
     dng.add(ifd_types.BitsPerSample, 3, [16, 16, 16])
     dng.add(ifd_types.Compression, 1, 1)  # 1 = uncompressed, 5 = LZW
-    # https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
-    dng.add(ifd_types.PhotometricInterpretation, 1, 34892)  # 34892 (linear raw)
-
-    dng.addImageData(data)
-
+    dng.add(ifd_types.PhotometricInterpretation, 1, LINEAR_RAW)
     dng.add(ifd_types.Orientation, 1, 1)
     dng.add(ifd_types.SamplesPerPixel, 1, 3)
     dng.add(ifd_types.RowsPerStrip, 1, height)
@@ -144,7 +148,6 @@ def writeDNG(filename, width, height, data):
     dng.add(ifd_types.WhiteLevel, 3, [100, 100, 100])  # a bit random value. not sure what max value I can get from aces_cc encoded footage
     dng.add(ifd_types.ColorMatrix1, 9, flatten(DNG_MATRIX))
     dng.add(ifd_types.BaselineExposure, 1, 5)  # this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
-
     dng.add(ifd_types.CalibrationIlluminant1, 1, 0)
 
     dng.write(filename)

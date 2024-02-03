@@ -130,3 +130,12 @@ class BaselineExposure(IfdField):
 class Software(IfdField):
     code = 305
     field_type = Ascii
+
+
+class AsShotNeutral(IfdField):
+    code = 50728
+    field_type = Rational
+
+class AsShotWhiteXY(IfdField):
+    code = 50729
+    field_type = Rational

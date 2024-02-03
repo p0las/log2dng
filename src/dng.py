@@ -5,7 +5,7 @@ from typing import Type, List
 import numpy as np
 
 import ifd_types
-from field_types import HalfFloat, FieldType, SRational, Ascii
+from field_types import HalfFloat, FieldType, SRational, Ascii, Rational
 from loader import DNG_MATRIX
 
 logger = getLogger('dng_creator')
@@ -58,18 +58,18 @@ class DNG():
         logger.debug(f"Adding data - size: {len(data)}, {data_type}")
         offset = self._header_size + len(self._binary_data)
 
-        if data_type == SRational:
+        if data_type in [SRational, Rational]:
             denominator = 100000000
             numerators = [int(x * denominator) for x in data]
             denominators = [denominator] * len(data)
             data = flatten(zip(numerators, denominators))
             self._binary_data += struct.pack(f'<{len(data)}i', *data)
         elif data_type == Ascii:
-            #TODO: ascii data type not implemented yet
+            # TODO: ascii data type not implemented yet
             raise NotImplementedError("Ascii data type not implemented yet as dng_validate complains about not a null terminated string. I need to figure out how to do that.")
 
             data = data[0]
-            #this should work as the string is null terminated (longer than the actual string)
+            # this should work as the string is null terminated (longer than the actual string)
             self._binary_data += struct.pack(f'<{len(data) + 1}{data_type.short_code}', data.encode('utf-8'))
         else:
             self._binary_data += struct.pack(f'<{len(data)}{data_type.short_code}', *data)
@@ -149,6 +149,10 @@ def writeDNG(filename, width, height, data):
     dng.add(ifd_types.ColorMatrix1, 9, flatten(DNG_MATRIX))
     dng.add(ifd_types.BaselineExposure, 1, 5)  # this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
     dng.add(ifd_types.CalibrationIlluminant1, 1, 0)
+    dng.add(ifd_types.AsShotWhiteXY, 2, [0.3127, 0.329])
+    dng.add(ifd_types.AnalogBalance, 3, [1,1,1])
+
+
 
     dng.write(filename)
 

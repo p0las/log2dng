@@ -8,6 +8,7 @@ DNG_COLOUR_SPACE = 'ACES - ACES2065-1'
 
 # XYZ to ACES2065-1
 # https://github.com/ampas/aces-dev/blob/master/transforms/ctl/README-MATRIX.md
+# https://www.colour-science.org:8010/apps/rgb_colourspace_transformation_matrix?input-colourspace=DCDM+XYZ&output-colourspace=ACES2065-1&chromatic-adaptation-transform=None&formatter=repr&decimals=10
 DNG_MATRIX = [[1.0498110175, 0.0000000000, -0.0000974845],
               [-0.4959030231, 1.3733130458, 0.0982400361],
               [0.0000000000, 0.0000000000, 0.9912520182]]

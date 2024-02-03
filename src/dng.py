@@ -17,8 +17,8 @@ def flatten(matrix):
     return [item for row in matrix for item in row]
 
 
-def packIfd(ifd_class: Type[ifd_types.IfdField], num_values, value_offset):
-    return struct.pack('<HHII', ifd_class.code, ifd_class.field_type.dng_code, num_values, value_offset)
+def packIfd(ifd: ifd_types.IfdField):
+    return struct.pack('<HHII', ifd.code, ifd.field_type.dng_code, ifd.num_values, ifd.value)
 
 
 class DNG():
@@ -31,13 +31,11 @@ class DNG():
         # predefined
         self._header_size = 8
 
+        # list of ifd instances that will get written to the file
+        self._ifds: List[ifd_types.IfdField] = []
+
         # binary data
         self._binary_data = b''
-        self._ifds = b''
-
-        self._num_ifds = 0
-        self._offsets = dict()
-        self._last_ifd_id = -1  # to make sure they are in order as per DNG docs
 
     def _makeHeader(self):
         return b'II*\x00'  # Little-endian byte order, TIFF identifier and TIFF version (always 42)
@@ -47,9 +45,8 @@ class DNG():
         if self._fitsToIfd(ifd.field_type, num_values):
             self.addIfd(ifd, num_values, data)
         else:
-            # TODO: generate unique name here or id in case we have the same tag more then once
-            name = str(ifd)
-            offset = self.addData(name, data, ifd.field_type)
+            # if the data doesn't fit into ids we add it to the binary data and add point the ifd to it
+            offset = self.addData(str(ifd), data, ifd.field_type)
             self.addIfd(ifd, num_values, offset)
 
     def addData(self, name, data: List, data_type: Type[FieldType]):
@@ -57,7 +54,7 @@ class DNG():
             data = [data]
 
         logger.info(f"Adding data {name} - size: {len(data)}, {data_type}")
-        self._offsets[name] = self._header_size + len(self._binary_data)
+        offset = self._header_size + len(self._binary_data)
 
         if data_type == SRational:
             denominator = 100000000
@@ -71,33 +68,32 @@ class DNG():
 
             self._binary_data += struct.pack(f'<{len(data)}{data_type.short_code}', *data)
 
-        return self._offsets[name]
+        return offset
 
     def addIfd(self, ifd: Type[ifd_types.IfdField], num_values: int, value):
-        logger.info(f"Adding IFD: {ifd}")
-        if ifd.code < self._last_ifd_id:
-            # TODO: handle it internally by keeping a dict of ifds instead one binary chunk
-            raise Exception(f"IFD codes must be in ascending order: {ifd}")
-        self._last_ifd_id = ifd.code
-        self._ifds += packIfd(ifd, num_values, value)
-        self._num_ifds += 1
+        logger.debug(f"Adding IFD: {ifd}")
+
+        new_ifd = ifd(num_values, value)
+        self._ifds.append(new_ifd)
 
     def addImageData(self, data):
         '''rgb data, no alpha'''
 
-        logger.info(f"Adding image data - {self.image_data_type}")
+        logger.debug(f"Adding image data - {self.image_data_type}")
 
-        self._offsets['image'] = self._header_size + len(self._binary_data)
+        offset = self._header_size + len(self._binary_data)
 
         self._binary_data += np.array(data.flatten(), dtype=f'<{self.image_data_type.short_code}').tobytes()
 
-        return self._offsets['image']
+        self.addIfd(ifd_types.StripOffsets, 1, offset)
+
+        return offset
 
     def _getIfdOffset(self):
         return self._header_size + len(self._binary_data)
 
     def _makeIfdHeader(self):
-        return struct.pack('<H', self._num_ifds)
+        return struct.pack('<H', len(self._ifds))
 
     def _makeIfdFooter(self):
         return struct.pack('<I', 0)
@@ -108,7 +104,11 @@ class DNG():
             f.write(struct.pack('<I', self._getIfdOffset()))
             f.write(self._binary_data)
             f.write(self._makeIfdHeader())
-            f.write(self._ifds)
+
+            # sort the ifds by code as required by the spec
+            self._ifds.sort(key=lambda x: x.code)
+            f.write(b''.join([packIfd(ifd) for ifd in self._ifds]))
+
             f.write(self._makeIfdFooter())
 
     def _fitsToIfd(self, field_type: Type[FieldType], field_count: int):
@@ -131,9 +131,7 @@ def writeDNG(filename, width, height, data):
     # https://community.adobe.com/t5/camera-raw-discussions/what-are-the-minimum-required-tags-for-a-dng-file/m-p/8962268
     dng.add(ifd_types.PhotometricInterpretation, 1, 34892)  # 34892 (linear raw)
 
-    # TODO: combine those two into one
-    offset = dng.addImageData(data)
-    dng.addIfd(ifd_types.StripOffsets, 1, offset)
+    dng.addImageData(data)
 
     dng.add(ifd_types.Orientation, 1, 1)
     dng.add(ifd_types.SamplesPerPixel, 1, 3)

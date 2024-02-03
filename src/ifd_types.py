@@ -12,6 +12,10 @@ class IfdField(metaclass=IfdMeta):
     code = -1
     field_type: Type[FieldType] = -1
 
+    def __init__(self, num_values, value):
+        self.num_values = num_values
+        self.value = value
+
 
 class SubIFDs(IfdField):
     code = 330

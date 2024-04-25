@@ -13,6 +13,13 @@ logger = getLogger('dng_creator')
 IDF_DATA_BITS_COUNT = 4
 LINEAR_RAW = 34892
 
+D65 = [0.3127, 0.329]  # https://en.wikipedia.org/wiki/Illuminant_D65
+D60 = [0.32163, 0.33774]
+
+WHITE_LEVEL = 255
+BLACK_LEVEL = 0
+BASE_EXPOSURE = 6.3
+
 
 def flatten(matrix):
     return [item for row in matrix for item in row]
@@ -95,9 +102,6 @@ class DNG():
 
         return offset
 
-    def _getIfdOffset(self):
-        return self._header_size + len(self._binary_data)
-
     def _makeIfdHeader(self):
         return struct.pack('<H', len(self._ifds))
 
@@ -107,15 +111,19 @@ class DNG():
     def write(self, path):
         with open(path, 'wb') as f:
             f.write(self._makeHeader())
-            f.write(struct.pack('<I', self._getIfdOffset()))
+            f.write(self._makeIdfOffset())
             f.write(self._binary_data)
             f.write(self._makeIfdHeader())
-
-            # sort the ifds by code as required by the spec
-            self._ifds.sort(key=lambda x: x.code)
-            f.write(b''.join([packIfd(ifd) for ifd in self._ifds]))
-
+            f.write(self._makeIfds())
             f.write(self._makeIfdFooter())
+
+    def _makeIfds(self):
+        # sort the ifds by code as required by the spec
+        self._ifds.sort(key=lambda x: x.code)
+        return b''.join([packIfd(ifd) for ifd in self._ifds])
+
+    def _makeIdfOffset(self):
+        return struct.pack('<I', self._header_size + len(self._binary_data))
 
     def _fitsToIfd(self, field_type: Type[FieldType], field_count: int):
         """check if the provided data can fit into ifd"""
@@ -144,15 +152,15 @@ def writeDNG(filename, width, height, data):
     dng.add(ifd_types.PlanarConfiguration, 1, 1)
     dng.add(ifd_types.SampleFormat, 3, [3, 3, 3])
     dng.add(ifd_types.DNGVersion, 4, 1025)  # 1.4.0.0 yes I'm lazy here
-    dng.add(ifd_types.BlackLevel, 3, [0, 0, 0])
-    dng.add(ifd_types.WhiteLevel, 3, [100, 100, 100])  # a bit random value. not sure what max value I can get from aces_cc encoded footage
+    dng.add(ifd_types.BlackLevel, 3, [BLACK_LEVEL, BLACK_LEVEL, BLACK_LEVEL])
+    dng.add(ifd_types.WhiteLevel, 3, [WHITE_LEVEL, WHITE_LEVEL, WHITE_LEVEL])  # a bit random value. not sure what max value I can get from aces_cc encoded footage
     dng.add(ifd_types.ColorMatrix1, 9, flatten(DNG_MATRIX))
-    dng.add(ifd_types.BaselineExposure, 1, 5)  # this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
+    dng.add(ifd_types.BaselineExposure, 1, BASE_EXPOSURE)  # this needs to be tailored  to the white level. very experimental values here. exposure is power of 2 (2^5 = 32) so the 100 makes no sense but works
     dng.add(ifd_types.CalibrationIlluminant1, 1, 0)
-    dng.add(ifd_types.AsShotWhiteXY, 2, [0.3127, 0.329])
-    dng.add(ifd_types.AnalogBalance, 3, [1,1,1])
+    dng.add(ifd_types.AsShotWhiteXY, 2, D60)
+    dng.add(ifd_types.AnalogBalance, 3, [1, 1, 1])
 
-
+    # TODO: profile is missing in lightroom. find a way to add the adobe standard profile
 
     dng.write(filename)
 

@@ -15,7 +15,11 @@ DNG_MATRIX = [[1.0498110175, 0.0000000000, -0.0000974845],
 
 
 def getOcioConfig():
-    return OCIO.Config.CreateFromFile(os.path.dirname(__file__) + "/../ocio/config.ocio")
+    ocio_path = os.path.dirname(__file__) + "/../ocio/config.ocio"
+    if not os.path.exists(ocio_path):
+        raise RuntimeError(f"embedded OCIO config file not found at {ocio_path}.")
+
+    return OCIO.Config.CreateFromFile(ocio_path)
 
 
 def convertColourSpace(img, timeline_colour_space):
@@ -30,11 +34,14 @@ def convertColourSpace(img, timeline_colour_space):
 
 
 def loadImage(path, timeline_colour_space=None):
-    img = cv2.imread(path)
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+    if not img.dtype == np.uint16:
+        raise RuntimeError(f"Image {path} is not 16 bit")
 
     img2 = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    img_float = img2.astype(np.float32) / 255.0
+    img_float = img2.astype(np.float32) / 65535.0
 
     if timeline_colour_space is not None:
         return convertColourSpace(img_float, timeline_colour_space)
